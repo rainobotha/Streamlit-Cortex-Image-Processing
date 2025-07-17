@@ -21,7 +21,9 @@ USE SCHEMA INSPECTION_SCHEMA;
 -- Create stage for storing building inspection images
 CREATE OR REPLACE STAGE BUILDING_INSPECTION_STAGE
   DIRECTORY = (ENABLE = TRUE)
+  ENCRYPTION = ( TYPE = 'SNOWFLAKE_SSE')
   COMMENT = 'Stage for storing building inspection images';
+
 
 -- Create staging table for file metadata (alternative to PUT commands in SiS)
 -- Binary data is stored in chunked format for persistence across app restarts
