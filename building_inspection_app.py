@@ -1519,13 +1519,14 @@ stage_name = st.sidebar.selectbox(
 available_models = [
     "claude-3-7-sonnet",
     "claude-4-opus",
-    "claude-4-sonnet"
+    "claude-4-sonnet",
+    "openai-gpt-4.1"
 ]
 
 selected_model = st.sidebar.selectbox(
     "AI Model",
     options=available_models,
-    index=0,  # Default to claude-3-7-sonnet
+    index=2,  # Default to claude-4-sonnet
     help="Select the multimodal AI model to use for image analysis (cross-region inference enabled)"
 )
 
@@ -1533,7 +1534,8 @@ selected_model = st.sidebar.selectbox(
 model_info = {
     "claude-3-7-sonnet": "Anthropic's Claude 3.7 Sonnet - Advanced multimodal reasoning",
     "claude-4-opus": "Anthropic's Claude 4 Opus - Premium multimodal flagship model",
-    "claude-4-sonnet": "Anthropic's Claude 4 Sonnet - Advanced multimodal reasoning"
+    "claude-4-sonnet": "Anthropic's Claude 4 Sonnet - Advanced multimodal reasoning",
+    "openai-gpt-4.1": "OpenAI's GPT-4.1 - Advanced multimodal AI with vision capabilities"
 }
 
 if selected_model in model_info:
@@ -1658,7 +1660,7 @@ if not st.session_state.db_loaded:
             st.session_state.db_loaded = True  # Don't keep retrying
 
 # Main content area
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Process Images", "🔍 Analyze Images", "💬 Image Chat", "📊 Results Dashboard", "📋 History"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📤 Process Images", "💬 Image Chat", "🔍 Analyze Images", "📊 Results Dashboard", "📋 History"])
 
 with tab1:
     st.markdown('<div class="upload-section">', unsafe_allow_html=True)
@@ -1715,69 +1717,6 @@ with tab1:
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab2:
-    st.markdown('<div class="analysis-section">', unsafe_allow_html=True)
-    st.markdown("### 🔍 Image Analysis")
-    
-    if st.session_state.uploaded_images:
-        # Custom prompt input
-        custom_prompt = st.text_area(
-            "Custom Analysis Prompt (Optional)",
-            placeholder="Enter a specific prompt for image analysis or leave blank to use default",
-            height=100
-        )
-        
-        # Select images for analysis
-        st.markdown("#### Select Images to Analyze")
-        
-        image_options = [f"{img['filename']} ({img['upload_time']})" for img in st.session_state.uploaded_images]
-        selected_images = st.multiselect(
-            "Choose images to analyze",
-            image_options,
-            default=image_options
-        )
-        
-        # Debug mode toggle for analysis
-        debug_analysis = st.checkbox("🐛 Enable Analysis Debug Mode", help="Shows detailed information about analysis processing")
-        
-        if selected_images and st.button("🔍 Analyze Selected Images", key="analyze_images"):
-            analysis_prompt = custom_prompt if custom_prompt.strip() else default_prompt
-            
-            # Set debug mode in session state
-            st.session_state.debug_chat = debug_analysis
-            
-            # Check database availability
-            try:
-                session.sql(f"SELECT COUNT(*) FROM {database_name}.{schema_name}.analysis_results LIMIT 1").collect()
-                st.info("✅ Database available - results will be stored for history and dashboard")
-            except:
-                st.warning("⚠️ Database not available - analysis will work but results won't be stored")
-            
-            with st.spinner("Analyzing images with AI..."):
-                analysis_results = analyze_images_with_ai(selected_images, analysis_prompt, stage_name, database_name, schema_name, selected_model)
-                
-                if analysis_results['success']:
-                    st.success(f"✅ Analysis completed for {len(analysis_results['results'])} images!")
-                    st.session_state.analysis_results.extend(analysis_results['results'])
-                    
-                    # Display analysis results
-                    st.markdown("### Analysis Results")
-                    for result in analysis_results['results']:
-                        with st.expander(f"📋 Analysis: {result['filename']}", expanded=True):
-                            st.markdown(f"**Filename:** {result['filename']}")
-                            st.markdown(f"**Analysis Time:** {result['analysis_time']}")
-                            st.markdown(f"**Prompt Used:** {result['prompt']}")
-                            st.markdown("**AI Analysis:**")
-                            st.markdown(result.get('analysis', 'No analysis available'))
-                            
-                            if 'confidence_score' in result:
-                                st.progress(result['confidence_score'])
-                                st.caption(f"Confidence Score: {result['confidence_score']:.2%}")
-                else:
-                    st.error(f"❌ Analysis failed: {analysis_results['error']}")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with tab3:
     st.markdown("### 💬 Image Chat")
     
     if st.session_state.uploaded_images:
@@ -1814,80 +1753,6 @@ with tab3:
                         st.write(f"- {file['name']} ({file['size']} bytes)")
                 else:
                     st.warning("⚠️ No files found in stage")
-            
-            if st.session_state.uploaded_images:
-                st.write("**Stage Upload Verification:**")
-                for img in st.session_state.uploaded_images:
-                    filename = img['filename']
-                    stage_path = img.get('stage_path', '')
-                    
-                    # Check if file was uploaded to actual stage
-                    if stage_path.startswith('@'):
-                        exists, file_info = verify_stage_upload(database_name, schema_name, stage_name, filename)
-                        if exists and file_info and isinstance(file_info, dict):
-                            st.success(f"✅ {filename} - Found in stage")
-                            st.write(f"  - Size: {file_info.get('size', 'Unknown')} bytes")
-                            st.write(f"  - Last modified: {file_info.get('last_modified', 'Unknown')}")
-                        else:
-                            st.error(f"❌ {filename} - Not found in stage")
-                    elif stage_path.startswith('staging_table://'):
-                        st.info(f"📊 {filename} - Stored in database (stage fallback)")
-                    else:
-                        st.warning(f"⚠️ {filename} - Memory only")
-            
-            if st.session_state.image_data:
-                st.write("**Stored image keys:**")
-                for key in st.session_state.image_data.keys():
-                    st.write(f"- {key}")
-                    
-            if st.session_state.uploaded_images:
-                st.write("**Uploaded image filenames:**")
-                missing_images = []
-                for img in st.session_state.uploaded_images:
-                    filename = img['filename']
-                    has_data = filename in st.session_state.image_data
-                    st.write(f"- {filename} {'✅' if has_data else '❌'}")
-                    if not has_data:
-                        missing_images.append(img)
-                
-                # Recovery mechanism for missing images
-                if missing_images:
-                    st.error(f"⚠️ {len(missing_images)} images are missing data and won't display properly!")
-                    st.write("**To fix this issue:**")
-                    st.write("1. Go back to the 'Process Images' tab")
-                    st.write("2. Upload the images again")
-                    st.write("3. Click 'Process Images & Create Database Records'")
-                    st.write("4. Come back to this tab to see the previews")
-                    
-                    if st.button("🗑️ Remove Missing Images from List"):
-                        # Remove images without data from the uploaded list
-                        st.session_state.uploaded_images = [
-                            img for img in st.session_state.uploaded_images 
-                            if img['filename'] in st.session_state.image_data
-                        ]
-                        st.success(f"Removed {len(missing_images)} missing images from the list")
-                        st.rerun()
-                    
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("🔄 Refresh Debug Info"):
-                    st.rerun()
-            with col2:
-                if st.button("📥 Reload Images from Stage"):
-                    # Clear existing image data and reload from stage
-                    st.session_state.image_data.clear()
-                    missing_count = ensure_image_data_loaded(database_name, schema_name, stage_name)
-                    if missing_count > 0:
-                        st.success(f"Attempted to reload {missing_count} images from stage")
-                    else:
-                        st.info("All images already loaded")
-                    st.rerun()
-            with col3:
-                if st.button("🗑️ Clear All Image Data"):
-                    st.session_state.image_data.clear()
-                    st.session_state.uploaded_images.clear()
-                    st.success("All image data cleared - please re-upload images")
-                    st.rerun()
         
         # Display images in gallery format
         if st.session_state.uploaded_images:
@@ -1998,110 +1863,11 @@ with tab3:
                 selected_img = st.session_state.uploaded_images[st.session_state.selected_chat_image_index]
                 st.session_state.selected_chat_image = selected_img
                 
-                # Debug information
-                st.markdown(f"**Debug:** Looking for image: `{selected_img['filename']}`")
-                st.markdown(f"**Debug:** Image data available: {selected_img['filename'] in st.session_state.image_data}")
-                
-                # Add debug button to test image analysis
-                if st.button("🔍 Debug Image Analysis", key="debug_analysis"):
-                    st.info("🔄 Testing image analysis debug...")
-                    
-                    # Test image loading
-                    test_image_data = None
-                    if selected_img['filename'] in st.session_state.image_data:
-                        test_image_data = st.session_state.image_data[selected_img['filename']]
-                        st.success(f"✅ Image data loaded from session: {len(test_image_data)} bytes")
-                    else:
-                        st.info("🔄 Attempting to load from stage...")
-                        test_image_data = load_image_from_stage(database_name, schema_name, stage_name, selected_img['filename'])
-                        if test_image_data:
-                            st.success(f"✅ Image data loaded from stage: {len(test_image_data)} bytes")
-                        else:
-                            st.error("❌ Failed to load image data")
-                    
-                    if test_image_data:
-                        try:
-                            # Test base64 conversion
-                            import base64
-                            test_base64 = base64.b64encode(test_image_data).decode('utf-8')
-                            st.success(f"✅ Base64 conversion successful: {len(test_base64)} characters")
-                                
-                            # Test image format detection
-                            if test_base64.startswith('iVBORw0KGgo'):
-                                st.success("✅ PNG format detected")
-                            elif test_base64.startswith('/9j/'):
-                                st.success("✅ JPEG format detected")
-                            elif test_base64.startswith('UklGR'):
-                                st.success("✅ WebP format detected")
-                            else:
-                                st.warning(f"⚠️ Unknown format, starts with: {test_base64[:20]}...")
-                            
-                            # Test multimodal request creation
-                            test_multimodal_request = [
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {
-                                            "type": "text",
-                                            "text": "Can you see this building inspection image? Just respond with 'Yes, I can see the image' if you can see it, or describe what you see."
-                                        },
-                                        {
-                                            "type": "image",
-                                            "image_url": {
-                                                "url": f"data:image/jpeg;base64,{test_base64}"
-                                            }
-                                        }
-                                    ]
-                                }
-                            ]
-                            
-                            import json
-                            test_request_json = json.dumps(test_multimodal_request)
-                            st.success(f"✅ Multimodal request created: {len(test_request_json)} characters")
-                            
-                            # Escape JSON for embedding in SQL
-                            escaped_test_request_json = test_request_json.replace('\\', '\\\\').replace("'", "''")
-                            
-                            # Test AI analysis
-                            st.info("🤖 Testing AI analysis...")
-                            test_analysis_sql = f"""
-                            SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                                '{selected_model}',
-                                PARSE_JSON('{escaped_test_request_json}')
-                            ) as analysis_result
-                            """
-                            
-                            try:
-                                test_ai_result = session.sql(test_analysis_sql).collect()
-                                if test_ai_result and test_ai_result[0][0]:
-                                    test_response = str(test_ai_result[0][0])
-                                    st.success(f"✅ AI analysis successful: {len(test_response)} characters")
-                                    st.markdown("**AI Response:**")
-                                    st.markdown(test_response)
-                                        
-                                    # Check if AI can actually see the image
-                                    if "Yes, I can see the image" in test_response or "I can see" in test_response:
-                                        st.success("🎉 AI can see the image! The issue might be with the analysis prompt.")
-                                    else:
-                                        st.warning("⚠️ AI responded but may not be seeing the image content.")
-                                else:
-                                    st.error("❌ AI analysis returned empty result")
-                            except Exception as ai_error:
-                                st.error(f"❌ AI analysis failed: {str(ai_error)}")
-                                st.error(f"Error type: {type(ai_error).__name__}")
-                                
-                        except Exception as base64_error:
-                            st.error(f"❌ Base64 conversion failed: {str(base64_error)}")
-                    else:
-                        st.error("❌ Cannot proceed with analysis - no image data available")
-                
                 # Display actual image if available
                 if selected_img and selected_img['filename'] in st.session_state.image_data:
                     try:
                         image_data = st.session_state.image_data[selected_img['filename']]
-                        st.markdown(f"**Debug:** Image data size: {len(image_data)} bytes")
                         image = Image.open(io.BytesIO(image_data))
-                        st.markdown(f"**Debug:** Image loaded successfully, size: {image.size}")
                         
                         # Create columns for image and details
                         col_img, col_details = st.columns([1, 1])
@@ -2125,7 +1891,6 @@ with tab3:
                             </div>
                             """, unsafe_allow_html=True)
                     except Exception as e:
-                        st.error(f"**Debug:** Error loading image: {str(e)}")
                         # Fallback to text only if image can't be displayed
                         st.markdown(f"""
                         <div style="background-color: #fff3cd; padding: 1.5rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid #ffc107;">
@@ -2141,11 +1906,6 @@ with tab3:
                         </div>
                         """, unsafe_allow_html=True)
                 elif selected_img:
-                    st.warning(f"**Debug:** No image data found for: `{selected_img['filename']}`")
-                    st.markdown("**Available image keys:**")
-                    for key in st.session_state.image_data.keys():
-                        st.markdown(f"- `{key}`")
-                    
                     # Fallback when no image data is available
                     st.markdown(f"""
                     <div style="background-color: #f8d7da; padding: 1.5rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid #dc3545;">
@@ -2191,16 +1951,12 @@ with tab3:
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # AI response with inference results
+                        # AI response - simplified
                         st.markdown(f"""
                         <div style="background-color: #f8f9fb; padding: 0.75rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid #4caf50;">
                             <strong>AI Assistant:</strong> {chat['ai_response']}
-                            <div style="font-size: 0.8rem; color: #666; margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid #e0e8f0;">
-                                <strong>Inference Results:</strong><br>
-                                <strong>Model Used:</strong> {chat.get('model_used', 'Unknown')}<br>
-                                <strong>Processing Time:</strong> {chat.get('processing_time_ms', 'N/A')} ms<br>
-                                <strong>Response Time:</strong> {chat_time}<br>
-                                <strong>Chat ID:</strong> {chat.get('chat_id', 'N/A')}
+                            <div style="font-size: 0.8rem; color: #666; margin-top: 0.5rem;">
+                                <strong>Time:</strong> {chat_time}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -2219,13 +1975,8 @@ with tab3:
                 if send_button and user_question.strip():
                     try:
                         with st.spinner("AI analyzing image and responding..."):
-                            # Call AI for chat response
                             # Record start time for processing measurement
                             start_time = datetime.now()
-                                
-                            # Use the working analysis function directly for chat
-                            if st.session_state.get('debug_chat', False):
-                                st.info("🔄 Using analysis function directly for chat (bypassing multimodal issues)")
                                 
                             # Format the user question as an analysis prompt
                             chat_prompt = f"""
@@ -2238,7 +1989,7 @@ with tab3:
                             Respond in a conversational tone as if you're chatting with the user about what you can see.
                             """
                                 
-                            # Use the exact same analysis function that works
+                            # Use the analysis function for chat
                             test_images = [f"{selected_img['filename']} ({selected_img['upload_time']})"]
                             analysis_results = analyze_images_with_ai(test_images, chat_prompt, stage_name, database_name, schema_name, selected_model)
                                 
@@ -2246,86 +1997,42 @@ with tab3:
                                 analysis_result = analysis_results['results'][0]
                                 ai_response = analysis_result['analysis']
                                     
-                                if st.session_state.get('debug_chat', False):
-                                    st.success(f"✅ Analysis function worked! Response: {len(ai_response)} characters")
-                                    st.info(f"🎯 Using analysis function result directly")
-                                        
-                                # Check if it actually saw the image
-                                if ai_response and not ai_response.startswith("# Building Inspection Analysis\nWithout seeing"):
-                                    if st.session_state.get('debug_chat', False):
-                                        st.success("✅ Analysis function can see the image!")
-                                        
-                                    # Record end time and calculate processing time
-                                    end_time = datetime.now()
-                                    processing_time_ms = (end_time - start_time).total_seconds() * 1000
-                                    
-                                    # Generate unique chat ID
-                                    chat_id = f"CHAT_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(user_question.encode()).hexdigest()[:8]}"
-                                    
-                                    # Prepare chat data with processing time
-                                    chat_data = {
-                                        'chat_id': chat_id,
-                                        'image_filename': selected_img['filename'],
-                                        'upload_id': selected_img.get('upload_id', ''),
-                                        'user_message': user_question,
-                                        'ai_response': ai_response,
-                                        'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
-                                        'timestamp': datetime.now().isoformat(),
-                                        'session_id': st.session_state.get('session_id', 'unknown'),
-                                        'processing_time_ms': processing_time_ms
-                                    }
-                                    
-                                    # Save to database
-                                    save_chat_to_database(database_name, schema_name, chat_data)
-                                    
-                                    # Also add to session state for backward compatibility
-                                    st.session_state.chat_history.append({
-                                        'image_filename': selected_img['filename'],
-                                        'user_message': user_question,
-                                        'ai_response': ai_response,
-                                        'timestamp': datetime.now().isoformat(),
-                                        'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
-                                        'processing_time_ms': processing_time_ms,
-                                        'chat_id': chat_id
-                                    })
-                                    
-                                    if st.session_state.get('debug_chat', False):
-                                        st.success(f"✅ Chat saved successfully! Chat ID: {chat_id}")
-                                    
-                                    st.rerun()
-                                else:
-                                    if st.session_state.get('debug_chat', False):
-                                        st.warning("⚠️ Analysis function also can't see the image - checking image data...")
-                                            
-                                        # Debug image data loading
-                                        image_data = load_image_from_stage(database_name, schema_name, stage_name, selected_img['filename'])
-                                        if image_data:
-                                            st.info(f"📦 Image data loaded: {len(image_data)} bytes")
-                                            # Test if it's valid image data
-                                            try:
-                                                import base64
-                                                test_base64 = base64.b64encode(image_data).decode('utf-8')
-                                                if test_base64.startswith(('iVBORw0KGgo', '/9j/', 'UklGR')):
-                                                    st.success("✅ Image data appears valid (PNG/JPEG/WebP)")
-                                                else:
-                                                    st.error("❌ Image data may be corrupted or invalid format")
-                                                    st.code(f"First 100 chars: {test_base64[:100]}")
-                                            except Exception as img_test_error:
-                                                st.error(f"❌ Image encoding test failed: {str(img_test_error)}")
-                                        else:
-                                            st.error("❌ No image data loaded from stage")
-                                                
-                                            # Check session state
-                                            if selected_img['filename'] in st.session_state.image_data:
-                                                session_data = st.session_state.image_data[selected_img['filename']]
-                                                st.info(f"📦 Session state has: {len(session_data)} bytes")
-                                            else:
-                                                st.error("❌ No image data in session state either")
-                            else:
-                                if st.session_state.get('debug_chat', False):
-                                    st.error("❌ Analysis function failed")
-                                    st.error(f"Error: {analysis_results.get('error', 'Unknown error')}")
+                                # Record end time and calculate processing time
+                                end_time = datetime.now()
+                                processing_time_ms = (end_time - start_time).total_seconds() * 1000
                                 
+                                # Generate unique chat ID
+                                chat_id = f"CHAT_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(user_question.encode()).hexdigest()[:8]}"
+                                
+                                # Prepare chat data with processing time
+                                chat_data = {
+                                    'chat_id': chat_id,
+                                    'image_filename': selected_img['filename'],
+                                    'upload_id': selected_img.get('upload_id', ''),
+                                    'user_message': user_question,
+                                    'ai_response': ai_response,
+                                    'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
+                                    'timestamp': datetime.now().isoformat(),
+                                    'session_id': st.session_state.get('session_id', 'unknown'),
+                                    'processing_time_ms': processing_time_ms
+                                }
+                                
+                                # Save to database
+                                save_chat_to_database(database_name, schema_name, chat_data)
+                                
+                                # Also add to session state for backward compatibility
+                                st.session_state.chat_history.append({
+                                    'image_filename': selected_img['filename'],
+                                    'user_message': user_question,
+                                    'ai_response': ai_response,
+                                    'timestamp': datetime.now().isoformat(),
+                                    'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
+                                    'processing_time_ms': processing_time_ms,
+                                    'chat_id': chat_id
+                                })
+                                
+                                st.rerun()
+                            else:
                                 ai_response = "I'm having trouble analyzing this image. Please try again or check if the image was uploaded correctly."
                                 
                                 # Record end time and calculate processing time
@@ -2367,15 +2074,7 @@ with tab3:
                     except Exception as e:
                         st.error(f"❌ Error getting AI response: {str(e)}")
                         
-                        # Show more detailed error information for debugging
-                        if st.session_state.get('debug_chat', False):
-                            st.error(f"**Error Details:**")
-                            st.error(f"- Error Type: {type(e).__name__}")
-                            st.error(f"- Error Message: {str(e)}")
-                            st.error(f"- Image filename: {selected_img['filename']}")
-                            st.error(f"- Model: {selected_model}")
-                        
-                        # Fallback response with proper ai_response assignment
+                        # Fallback response
                         ai_response = f"I apologize, but I'm having technical difficulties analyzing the image '{selected_img['filename']}'. Error: {str(e)[:100]}{'...' if len(str(e)) > 100 else ''}. However, I can provide some general guidance: For Queensland building inspections, please check for structural integrity, weatherproofing, compliance with building codes, and any visible maintenance needs. If you have specific concerns about this image, please try asking again or consult with a qualified building inspector."
                         
                         # Generate unique chat ID for fallback
@@ -2444,13 +2143,230 @@ with tab3:
                 for i, question in enumerate(suggested_questions):
                     with cols[i % 2]:
                         if st.button(question, key=f"suggestion_{i}"):
-                            # Store the suggested question for the next form submission
-                            st.session_state.suggested_question = question
-                            st.rerun()
+                            # Process the suggested question immediately
+                            try:
+                                with st.spinner("AI analyzing image and responding..."):
+                                    # Record start time for processing measurement
+                                    start_time = datetime.now()
+                                        
+                                    # Format the user question as an analysis prompt
+                                    chat_prompt = f"""
+                                    You are an expert building inspector having a conversation about a building inspection image.
+                                        
+                                    User question: {question}
+                                        
+                                    Please provide a detailed, conversational response based on what you can observe in this building inspection image.
+                                    Focus on Queensland building standards and practical advice. Be specific and helpful.
+                                    Respond in a conversational tone as if you're chatting with the user about what you can see.
+                                    """
+                                        
+                                    # Use the analysis function for chat
+                                    test_images = [f"{selected_img['filename']} ({selected_img['upload_time']})"]
+                                    analysis_results = analyze_images_with_ai(test_images, chat_prompt, stage_name, database_name, schema_name, selected_model)
+                                        
+                                    if analysis_results['success'] and analysis_results['results']:
+                                        analysis_result = analysis_results['results'][0]
+                                        ai_response = analysis_result['analysis']
+                                            
+                                        # Record end time and calculate processing time
+                                        end_time = datetime.now()
+                                        processing_time_ms = (end_time - start_time).total_seconds() * 1000
+                                        
+                                        # Generate unique chat ID
+                                        chat_id = f"CHAT_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(question.encode()).hexdigest()[:8]}"
+                                        
+                                        # Prepare chat data with processing time
+                                        chat_data = {
+                                            'chat_id': chat_id,
+                                            'image_filename': selected_img['filename'],
+                                            'upload_id': selected_img.get('upload_id', ''),
+                                            'user_message': question,
+                                            'ai_response': ai_response,
+                                            'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
+                                            'timestamp': datetime.now().isoformat(),
+                                            'session_id': st.session_state.get('session_id', 'unknown'),
+                                            'processing_time_ms': processing_time_ms
+                                        }
+                                        
+                                        # Save to database
+                                        save_chat_to_database(database_name, schema_name, chat_data)
+                                        
+                                        # Also add to session state for backward compatibility
+                                        st.session_state.chat_history.append({
+                                            'image_filename': selected_img['filename'],
+                                            'user_message': question,
+                                            'ai_response': ai_response,
+                                            'timestamp': datetime.now().isoformat(),
+                                            'model_used': f'SNOWFLAKE.CORTEX.COMPLETE ({selected_model})',
+                                            'processing_time_ms': processing_time_ms,
+                                            'chat_id': chat_id
+                                        })
+                                        
+                                        st.rerun()
+                                    else:
+                                        st.error("I'm having trouble analyzing this image. Please try again or check if the image was uploaded correctly.")
+                                        
+                            except Exception as e:
+                                st.error(f"❌ Error getting AI response: {str(e)}")
+                                
+                                # Fallback response
+                                ai_response = f"I apologize, but I'm having technical difficulties analyzing the image '{selected_img['filename']}'. Error: {str(e)[:100]}{'...' if len(str(e)) > 100 else ''}. However, I can provide some general guidance: For Queensland building inspections, please check for structural integrity, weatherproofing, compliance with building codes, and any visible maintenance needs. If you have specific concerns about this image, please try asking again or consult with a qualified building inspector."
+                                
+                                # Generate unique chat ID for fallback
+                                chat_id = f"CHAT_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{hashlib.md5(question.encode()).hexdigest()[:8]}"
+                                
+                                # Prepare fallback chat data
+                                chat_data = {
+                                    'chat_id': chat_id,
+                                    'image_filename': selected_img['filename'],
+                                    'upload_id': selected_img.get('upload_id', ''),
+                                    'user_message': question,
+                                    'ai_response': ai_response,
+                                    'model_used': 'Fallback Response',
+                                    'timestamp': datetime.now().isoformat(),
+                                    'session_id': st.session_state.get('session_id', 'unknown'),
+                                    'processing_time_ms': 100  # Fallback processing time
+                                }
+                                
+                                # Save fallback to database
+                                save_chat_to_database(database_name, schema_name, chat_data)
+                                
+                                # Also add to session state for backward compatibility
+                                st.session_state.chat_history.append({
+                                    'image_filename': selected_img['filename'],
+                                    'user_message': question,
+                                    'ai_response': ai_response,
+                                    'timestamp': datetime.now().isoformat(),
+                                    'model_used': 'Fallback Response',
+                                    'processing_time_ms': 100,  # Fallback processing time
+                                    'chat_id': chat_id
+                                })
+                                
+                                st.rerun()
         else:
             st.info("No images available for chat.")
     else:
         st.info("📝 Please process some images first in the 'Process Images' tab to start chatting about them.")
+
+with tab3:
+    st.markdown('<div class="analysis-section">', unsafe_allow_html=True)
+    st.markdown("### 🔍 Image Analysis")
+    
+    if st.session_state.uploaded_images:
+        # Custom prompt input
+        custom_prompt = st.text_area(
+            "Custom Analysis Prompt (Optional)",
+            placeholder="Enter a specific prompt for image analysis or leave blank to use default",
+            height=100
+        )
+        
+        # Select images for analysis
+        st.markdown("#### Select Images to Analyze")
+        
+        image_options = [f"{img['filename']} ({img['upload_time']})" for img in st.session_state.uploaded_images]
+        selected_images = st.multiselect(
+            "Choose images to analyze",
+            image_options,
+            default=image_options
+        )
+        
+        # Debug mode toggle for analysis
+        debug_analysis = st.checkbox("🐛 Enable Analysis Debug Mode", help="Shows detailed information about analysis processing")
+        
+        if selected_images and st.button("🔍 Analyze Selected Images", key="analyze_images"):
+            analysis_prompt = custom_prompt if custom_prompt.strip() else default_prompt
+            
+            # Set debug mode in session state
+            st.session_state.debug_chat = debug_analysis
+            
+            # Check database availability
+            try:
+                session.sql(f"SELECT COUNT(*) FROM {database_name}.{schema_name}.analysis_results LIMIT 1").collect()
+                st.info("✅ Database available - results will be stored for history and dashboard")
+            except:
+                st.warning("⚠️ Database not available - analysis will work but results won't be stored")
+            
+            # Initialize progress tracking
+            st.markdown("### 🔄 Analysis Progress")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            current_image_text = st.empty()
+            
+            # Initialize results container
+            results_container = st.container()
+            
+            total_images = len(selected_images)
+            completed_results = []
+            
+            try:
+                for idx, image_name in enumerate(selected_images):
+                    # Update progress
+                    progress = (idx) / total_images
+                    progress_bar.progress(progress)
+                    status_text.text(f"Analyzing image {idx + 1} of {total_images}...")
+                    current_image_text.text(f"🔍 Currently analyzing: {image_name}")
+                    
+                    # Analyze single image
+                    single_result = analyze_images_with_ai([image_name], analysis_prompt, stage_name, database_name, schema_name, selected_model)
+                    
+                    if single_result['success'] and single_result['results']:
+                        completed_results.extend(single_result['results'])
+                        
+                        # Show immediate result
+                        with results_container:
+                            st.markdown(f"✅ **Completed:** {image_name}")
+                            with st.expander(f"📋 Analysis: {single_result['results'][0]['filename']}", expanded=False):
+                                result = single_result['results'][0]
+                                st.markdown(f"**Filename:** {result['filename']}")
+                                st.markdown(f"**Analysis Time:** {result['analysis_time']}")
+                                st.markdown(f"**Prompt Used:** {result['prompt']}")
+                                st.markdown("**AI Analysis:**")
+                                st.markdown(result.get('analysis', 'No analysis available'))
+                                
+                                if 'confidence_score' in result:
+                                    st.progress(result['confidence_score'])
+                                    st.caption(f"Confidence Score: {result['confidence_score']:.2%}")
+                    else:
+                        with results_container:
+                            st.error(f"❌ **Failed:** {image_name} - {single_result.get('error', 'Unknown error')}")
+                
+                # Final progress update
+                progress_bar.progress(1.0)
+                status_text.text(f"✅ Analysis complete! Processed {len(completed_results)} of {total_images} images successfully.")
+                current_image_text.text("🎉 All images processed!")
+                
+                # Store results
+                if completed_results:
+                    st.session_state.analysis_results.extend(completed_results)
+                    
+                    # Summary
+                    st.markdown("---")
+                    st.markdown("### 📊 Analysis Summary")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Total Images", total_images)
+                    with col2:
+                        st.metric("Successful", len(completed_results))
+                    with col3:
+                        failed_count = total_images - len(completed_results)
+                        st.metric("Failed", failed_count, delta=f"-{failed_count}" if failed_count > 0 else None)
+                    
+                    if len(completed_results) > 0:
+                        avg_confidence = sum(r.get('confidence_score', 0) for r in completed_results) / len(completed_results)
+                        st.metric("Average Confidence", f"{avg_confidence:.1%}")
+                    
+                    st.success(f"🎉 Analysis completed! {len(completed_results)} images analyzed successfully.")
+                else:
+                    st.error("❌ No images were analyzed successfully.")
+                    
+            except Exception as e:
+                progress_bar.progress(1.0)
+                status_text.text("❌ Analysis interrupted due to error")
+                current_image_text.text("")
+                st.error(f"Analysis failed: {str(e)}")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 with tab4:
     st.markdown("### 📊 Results Dashboard")
@@ -2859,64 +2775,3 @@ with tab5:
     else:
         st.info("📝 No analysis history available.")
 
-# Footer
-st.markdown('<div class="footer-info">', unsafe_allow_html=True)
-st.markdown("### 📋 Queensland Building Inspection Image Analyzer")
-
-# Database connection status
-is_connected, status_message = verify_database_connection(database_name, schema_name)
-status_color = "🟢" if is_connected else "🔴"
-st.markdown(f"**Database Status**: {status_color} {status_message}")
-
-st.markdown(f"""
-This professional Queensland Building Inspection Image Analyzer provides comprehensive analysis aligned with Queensland building standards and regulations.
-
-**Key Features:**
-- 📤 **Secure Image Processing**: Process multiple building inspection images with secure database tracking
-- 🔍 **AI-Powered Analysis**: Analyze images using advanced AI with Queensland standards compliance
-- 💬 **Interactive Image Chat**: Chat with AI about specific images for detailed discussions
-- 🤖 **Professional Model Selection**: Choose from multimodal AI models (Claude 3.7/4)
-- 📊 **Comprehensive Dashboard**: View analysis results and performance metrics
-- 📋 **Audit Trail**: Complete history tracking and export capabilities
-- 🎯 **Queensland Standards**: Custom prompts aligned with Queensland building codes
-- 🏢 **Enterprise Integration**: Full integration with Snowflake for secure data management
-
-**Supported Image Formats**: PNG, JPG, JPEG, TIFF, BMP
-
-**AI Capabilities**: Powered by Snowflake Cortex AI with cross-region inference support. Choose from 3 multimodal models (Claude-3.7/4) for intelligent image analysis with vision capabilities
-
-**Data Storage**: Image metadata and analysis results securely stored in Snowflake database with proper access controls
-
-**Database Objects Created:**
-- `IMAGE_UPLOADS` - Track processed images
-- `ANALYSIS_RESULTS` - Store AI analysis results
-- `INSPECTION_REPORTS` - Organize inspections into reports
-- `V_ANALYSIS_SUMMARY` - Comprehensive analysis view
-- `V_INSPECTION_METRICS` - Dashboard metrics
-
-**Setup Instructions:**
-1. Run the `setup_building_inspection_db.sql` script to create database objects
-2. Configure the database, schema, and stage names in the sidebar
-3. Select your preferred multimodal AI model from the available options (cross-region inference enabled)
-4. Process images and analyze them with Queensland standards-focused prompts
-5. View results in the dashboard and track history
-
-**Current Configuration:**
-- Database: `{database_name}`
-- Schema: `{schema_name}`
-- Stage: `{stage_name}`
-- AI Model: `{selected_model}` (multimodal)
-
-**Last Updated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
----
-
-**Important Notice**: This application is designed to assist with building inspection analysis using Queensland building standards. All analysis results should be reviewed by qualified building professionals. This tool does not replace professional building inspection services or official compliance assessments. 
-
-**For Official Building Compliance**: For official building compliance matters, complaints, or licensing information, please visit the [Queensland Building and Construction Commission (QBCC)](https://www.qbcc.qld.gov.au/) or call 139 333.
-
-**Support**: For technical support or questions regarding this application, please contact your system administrator.
-
-**Disclaimer**: The QBCC logo is used here for professional identification purposes. This application is designed to assist with Queensland building standards compliance analysis. All building inspection work should be conducted by appropriately licensed professionals.
-""")
-st.markdown('</div>', unsafe_allow_html=True)
